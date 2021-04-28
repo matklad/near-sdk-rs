@@ -55,17 +55,12 @@ impl MetadataVisitor {
             .map(|m| m.metadata_struct())
             .collect();
         Ok(quote! {
-            #[cfg(target_arch = "wasm32")]
+            // #[cfg(target_arch = "wasm32")]
             #[no_mangle]
-            pub extern "C" fn metadata() {
-                #panic_hook
-                #env_creation
-                use borsh::*;
-                let metadata = near_sdk::Metadata::new(vec![
+            pub fn metadata() -> near_sdk::Metadata {
+                near_sdk::Metadata::new(vec![
                     #(#methods),*
-                ]);
-                let data = near_sdk::borsh::BorshSerialize::try_to_vec(&metadata).expect("Failed to serialize the metadata using Borsh");
-                near_sdk::env::value_return(&data);
+                ])
             }
         })
     }

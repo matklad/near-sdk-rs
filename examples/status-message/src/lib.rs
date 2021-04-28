@@ -1,5 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::{env, log, metadata, near_bindgen, setup_alloc};
+use near_sdk::borsh::BorshSchema;
 
 use std::collections::HashMap;
 
@@ -47,6 +48,13 @@ mod tests {
             .is_view(is_view)
             .build()
     }
+
+    #[test]
+    fn print_metadata() {
+        let meta = metadata();
+        eprintln!("{:#?}", meta);
+    }
+
 
     #[test]
     fn set_get_message() {
