@@ -159,14 +159,20 @@ where
     /// reference.
     unsafe fn load(&self, index: u32) -> NonNull<CacheEntry<T>> {
         // TODO safety docs
-        match self.cache.get_ptr().as_mut().entry(index) {
+        let mut b_tree_map_ptr = self.cache.get_ptr();
+        let mut b_tree_map = b_tree_map_ptr.as_mut();
+        eprintln!("mut ref active:  {:?}, index: {}", b_tree_map as *mut _, index);
+        let res = match b_tree_map.entry(index) {
             Entry::Occupied(mut occupied) => NonNull::from(&mut **occupied.get_mut()),
             Entry::Vacant(vacant) => {
                 let value = env::storage_read(&self.index_to_lookup_key(index))
                     .map(|v| Self::deserialize_element(&v));
                 NonNull::from(&mut **vacant.insert(Box::new(CacheEntry::new_cached(value))))
             }
-        }
+        };
+        eprintln!("mut ref dropped: {:?}, index: {}", b_tree_map as *mut _, index);
+        eprintln!("keyset: {:?}", self.cache.get_ptr().as_mut().keys().collect::<Vec<_>>());
+        res
     }
 
     /// Loads value from storage into cache, and returns a mutable reference to the loaded value.
@@ -291,10 +297,56 @@ where
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
+    use std::{cell::Cell, usize};
+
+    use borsh::{BorshDeserialize, BorshSerialize};
     use rand::{Rng, SeedableRng};
 
     use super::Vector;
     use crate::test_utils::test_env;
+
+    #[test]
+    fn unsound() {
+        test_env::setup();
+
+        #[derive(Debug, Clone, Copy)]
+        struct T;
+
+        impl BorshSerialize for T {
+            fn serialize<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        impl BorshDeserialize for T {
+            fn deserialize(_buf: &mut &[u8]) -> std::io::Result<Self> {
+                GLOBAL.with(|g| {
+                    FLAG.with(|f| {
+                        if f.replace(false) {
+                            g.get(0);
+                        }
+                        Ok(T)
+                    })
+                })
+            }
+        }
+
+        thread_local! {
+            static GLOBAL: Vector<T> = Vector::new(92);
+            static FLAG: Cell<bool> = Cell::new(true);
+        }
+
+        eprintln!("Phase One");
+        let mut v: Vector<T> = Vector::new(92);
+        for _ in 0..10 {
+            v.push(T);
+        }
+        drop(v);
+        eprintln!("Phase Two");
+        GLOBAL.with(|g| {
+            g.get(0);
+        });
+    }
 
     #[test]
     fn test_push_pop() {
